@@ -316,14 +316,15 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 		/* Set output layer deltas. */
 		if (genann_act_output == genann_act_linear ||
 			ann->activation_output == genann_act_linear) {
+#pragma omp parallel for firstprivate(d, t, o) private(j)
 			for (j = 0; j < ann->outputs; ++j) {
-				*d++ = *t++ - *o++;
+				*(d + j) = *(t + j) - *(o + j);
 			}
 		}
 		else {
+#pragma omp parallel for firstprivate(d, t, o) private(j)
 			for (j = 0; j < ann->outputs; ++j) {
-				*d++ = (*t - *o) * *o * (1.0 - *o);
-				++o; ++t;
+				*(d + j) = (*(t + j) - *(o + j)) * *(o + j) * (1.0 - *(o + j));
 			}
 		}
 	}
@@ -343,6 +344,7 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 		/* Find first weight in following layer (which may be hidden or output). */
 		double const * const ww = ann->weight + ((ann->inputs + 1) * ann->hidden) + ((ann->hidden + 1) * ann->hidden * (h));
 
+#pragma omp parallel for private(j, k) firstprivate(o, d)
 		for (j = 0; j < ann->hidden; ++j) {
 
 			double delta = 0;
@@ -354,8 +356,7 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 				delta += forward_delta * forward_weight;
 			}
 
-			*d = *o * (1.0 - *o) * delta;
-			++d; ++o;
+			*(d + j) = *(o + j) * (1.0 - *(o + j)) * delta;
 		}
 	}
 
@@ -376,15 +377,15 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 			: 0);
 
 		/* Set output layer weights. */
+#pragma omp parallel for private(j, k) firstprivate(d, w)
 		for (j = 0; j < ann->outputs; ++j) {
-			*w++ += *d * learning_rate * -1.0;
+			double *mw = w + ((ann->hidden_layers ? ann->hidden : ann->inputs) + 1) * j;
+			*mw++ += *(d + j) * learning_rate * -1.0;
 			for (k = 1; k < (ann->hidden_layers ? ann->hidden : ann->inputs) + 1; ++k) {
-				*w++ += *d * learning_rate * i[k - 1];
+				*mw++ += *(d + j) * learning_rate * i[k - 1];
 			}
-
-			++d;
 		}
-
+		w += ((ann->hidden_layers ? ann->hidden : ann->inputs) + 1) * ann->outputs;
 		assert(w - ann->weight == ann->total_weights);
 	}
 
@@ -405,15 +406,14 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 			? ((ann->inputs + 1) * ann->hidden + (ann->hidden + 1) * (ann->hidden) * (h - 1))
 			: 0);
 
-
+#pragma omp parallel for private(j, k) firstprivate(d, w)
 		for (j = 0; j < ann->hidden; ++j) {
-			*w++ += *d * learning_rate * -1.0;
+			double *mw = w + ((h == 0 ? ann->inputs : ann->hidden) + 1) * j;
+			*mw++ += *(d + 1) * learning_rate * -1.0;
 			for (k = 1; k < (h == 0 ? ann->inputs : ann->hidden) + 1; ++k) {
-				*w++ += *d * learning_rate * i[k - 1];
+				*mw++ += *(d + 1) * learning_rate * i[k - 1];
 			}
-			++d;
 		}
-
 	}
 
 }
