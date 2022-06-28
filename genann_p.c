@@ -230,7 +230,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 		double *ret = o;
 #pragma omp parallel for num_threads(8), private(k, j, mw, sum) firstprivate(o, w)
 		for (j = 0; j < ann->outputs; ++j) {
-			mw = w + (ann->inputs * j);
+			mw = w + ((ann->inputs + 1) * j);
 			sum = *mw++ * -1.0;
 			for (k = 0; k < ann->inputs; ++k) {
 				sum += *mw++ * i[k];
@@ -244,7 +244,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 	/* Figure input layer */
 #pragma omp parallel for num_threads(8), private(k, j, mw, sum) firstprivate(o, w)
 	for (j = 0; j < ann->hidden; ++j) {
-		mw = w + (ann->inputs * j);
+		mw = w + ((ann->inputs + 1) * j);
 		sum = *mw++ * -1.0;
 		for (k = 0; k < ann->inputs; ++k) {
 			sum += *mw++ * i[k];
@@ -261,7 +261,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 	for (h = 1; h < ann->hidden_layers; ++h) {
 #pragma omp parallel for num_threads(8), private(k, j, mw, sum) firstprivate(o, w)
 		for (j = 0; j < ann->hidden; ++j) {
-			mw = w + (ann->hidden * j);
+			mw = w + ((ann->hidden + 1) * j);
 			sum = *mw++ * -1.0;
 			for (k = 0; k < ann->hidden; ++k) {
 				sum += *mw++ * i[k];
@@ -280,7 +280,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 	/* Figure output layer. */
 #pragma omp parallel for num_threads(8), private(k, j, mw, sum) firstprivate(o, w)
 	for (j = 0; j < ann->outputs; ++j) {
-		mw = w + (ann->hidden * j);
+		mw = w + ((ann->hidden + 1) * j);
 		sum = *mw++ * -1.0;
 		for (k = 0; k < ann->hidden; ++k) {
 			sum += *mw++ * i[k];
