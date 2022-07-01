@@ -303,7 +303,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 void genann_train(genann const *ann, double const *inputs, double const *desired_outputs, double learning_rate) {
 	/* To begin with, we must run the network forward. */
 	genann_run(ann, inputs);
-
+	omp_set_num_threads(8);
 	int h, j, k;
 
 	/* First set the output layer deltas. */
@@ -311,7 +311,7 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 		double const *o = ann->output + ann->inputs + ann->hidden * ann->hidden_layers; /* First output. */
 		double *d = ann->delta + ann->hidden * ann->hidden_layers; /* First delta. */
 		double const *t = desired_outputs; /* First desired output. */
-
+		
 
 		/* Set output layer deltas. */
 		if (genann_act_output == genann_act_linear ||
@@ -329,38 +329,36 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 		}
 	}
 
-
 	/* Set hidden layer deltas, start on last layer and work backwards. */
 	/* Note that loop is skipped in the case of hidden_layers == 0. */
-	for (h = ann->hidden_layers - 1; h >= 0; --h) {
+		for (h = ann->hidden_layers - 1; h >= 0; --h) {
 
-		/* Find first output and delta in this layer. */
-		double const *o = ann->output + ann->inputs + (h * ann->hidden);
-		double *d = ann->delta + (h * ann->hidden);
+			/* Find first output and delta in this layer. */
+			double const *o = ann->output + ann->inputs + (h * ann->hidden);
+			double *d = ann->delta + (h * ann->hidden);
 
-		/* Find first delta in following layer (which may be hidden or output). */
-		double const * const dd = ann->delta + ((h + 1) * ann->hidden);
+			/* Find first delta in following layer (which may be hidden or output). */
+			double const * const dd = ann->delta + ((h + 1) * ann->hidden);
 
-		/* Find first weight in following layer (which may be hidden or output). */
-		double const * const ww = ann->weight + ((ann->inputs + 1) * ann->hidden) + ((ann->hidden + 1) * ann->hidden * (h));
+			/* Find first weight in following layer (which may be hidden or output). */
+			double const * const ww = ann->weight + ((ann->inputs + 1) * ann->hidden) + ((ann->hidden + 1) * ann->hidden * (h));
 
 #pragma omp parallel for private(j, k) firstprivate(o, d)
-		for (j = 0; j < ann->hidden; ++j) {
+			for (j = 0; j < ann->hidden; ++j) {
 
-			double delta = 0;
+				double delta = 0;
 
-			for (k = 0; k < (h == ann->hidden_layers - 1 ? ann->outputs : ann->hidden); ++k) {
-				const double forward_delta = dd[k];
-				const int windex = k * (ann->hidden + 1) + (j + 1);
-				const double forward_weight = ww[windex];
-				delta += forward_delta * forward_weight;
+				for (k = 0; k < (h == ann->hidden_layers - 1 ? ann->outputs : ann->hidden); ++k) {
+					const double forward_delta = dd[k];
+					const int windex = k * (ann->hidden + 1) + (j + 1);
+					const double forward_weight = ww[windex];
+					delta += forward_delta * forward_weight;
+				}
+
+				*(d + j) = *(o + j) * (1.0 - *(o + j)) * delta;
 			}
-
-			*(d + j) = *(o + j) * (1.0 - *(o + j)) * delta;
 		}
-	}
-
-
+		
 	/* Train the outputs. */
 	{
 		/* Find first output delta. */
@@ -389,7 +387,6 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 		assert(w - ann->weight == ann->total_weights);
 	}
 
-
 	/* Train the hidden layers. */
 	for (h = ann->hidden_layers - 1; h >= 0; --h) {
 
@@ -409,9 +406,9 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 #pragma omp parallel for private(j, k) firstprivate(d, w)
 		for (j = 0; j < ann->hidden; ++j) {
 			double *mw = w + ((h == 0 ? ann->inputs : ann->hidden) + 1) * j;
-			*mw++ += *(d + 1) * learning_rate * -1.0;
+			*mw++ += *(d + j) * learning_rate * -1.0;
 			for (k = 1; k < (h == 0 ? ann->inputs : ann->hidden) + 1; ++k) {
-				*mw++ += *(d + 1) * learning_rate * i[k - 1];
+				*mw++ += *(d + j) * learning_rate * i[k - 1];
 			}
 		}
 	}

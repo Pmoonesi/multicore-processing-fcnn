@@ -5,10 +5,10 @@
 #include "genann.h"
 #include <omp.h>
 
-//#ifndef _OPENMP
-//	printf("openMP is not activated!\n");
-//	return 0;
-//#endif // !_OPENMP
+#ifndef _OPENMP
+	printf("openMP is not activated!\n");
+	return 0;
+#endif // !_OPENMP
 
 const char *save_name = "semeion.data";
 
@@ -43,6 +43,7 @@ int get_num(double* num) {
 
 int main() {
 	double start = omp_get_wtime();
+	srand(time(0));
 
 	// open the dataset file
 	FILE *ptr = fopen(save_name, "a+");
@@ -83,6 +84,7 @@ int main() {
 		}
 	}
 
+
 	// close the dataset file
 	fclose(ptr);
 	
@@ -90,7 +92,7 @@ int main() {
 	genann *ann = genann_init(256, 1, 28, 10);
 
 	// train the FCNN with training data
-	int epochs = 1000;
+	int epochs = 100;
 	double learning_rate = 0.05;
 	float train_percent = 0.7;
 	int train_data = train_percent * samples;
@@ -107,10 +109,13 @@ int main() {
 	for (i = train_data; i < samples; i++) {
 		const double *guess = genann_run(ann, pics[i]);
 		ind = 0;
+		printf("answer: %d\t %6.2lf", get_num(nums[i]), guess[0]);
 		for (j = 1; j < 10; j++) {
+			printf("%6.2lf", guess[j]);
 			if (guess[ind] < guess[j]) ind = j;
 		}
 		if (get_num(nums[i]) == ind) corrects++;
+		printf("\tpicked: %d\n", ind);
 	}
 
 	// deallocate the data space
