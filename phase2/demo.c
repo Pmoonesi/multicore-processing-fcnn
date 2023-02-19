@@ -2,15 +2,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "genann.h"
 #include <omp.h>
 
-#ifndef _OPENMP
-	printf("openMP is not activated!\n");
-	return 0;
-#endif // !_OPENMP
-
 const char *save_name = "semeion.data";
+
+void print_arr(double* arr, int len) {
+	int i;
+	for (i = 0; i < len; i++) {
+		printf("%6.2lf", *(arr + i));
+	}
+	printf("\n");
+}
 
 void print_pic(double* pic) {
 	int i, j;
@@ -41,7 +45,28 @@ int get_num(double* num) {
 	return -1;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
+	int num_inputs = 256, num_hidden_layers = 1, num_hidden_layers_neurons = 28, num_outputs = 10, epochs = 100;
+	char *save_name = "semeion.data", *token = " ";
+	if (argc > 1 && argc <= 5) {
+		printf("not enough arguments!\n");
+		exit(-1);
+	}
+	if (argc > 5) {
+		num_inputs = atoi(argv[1]);
+		num_hidden_layers = atoi(argv[2]);
+		num_hidden_layers_neurons = atoi(argv[3]);
+		num_outputs = atoi(argv[4]);
+		save_name = argv[5];
+	}
+	if (argc > 6) {
+		epochs = atoi(argv[6]);
+	}
+	if (argc > 7) {
+		token = argv[7];
+	}
+	printf("%d\t%d\t%d\t%d\t%d\t%s\t%s\n", num_inputs, num_hidden_layers, num_hidden_layers_neurons, num_outputs, epochs, save_name, token);
+
 	double start = omp_get_wtime();
 	srand(time(0));
 
@@ -54,8 +79,8 @@ int main() {
 
 	// find the size of dataset
 	int samples = 0;
-	char line[2048];
-	while (!feof(ptr) && fgets(line, 2048, ptr)) {
+	char line[4096];
+	while (!feof(ptr) && fgets(line, 4096, ptr)) {
 		++samples;
 	}
 	fseek(ptr, 0, SEEK_SET);
@@ -65,43 +90,35 @@ int main() {
 	double** nums = (double**)malloc(samples * sizeof(double*));
 	int i, j;
 	for (i = 0; i < samples; i++) {
-		pics[i] = (double*)malloc(256 * sizeof(double));
-		nums[i] = (double*)malloc(10 * sizeof(double));
+		pics[i] = (double*)malloc(num_inputs * sizeof(double));
+		nums[i] = (double*)malloc(num_outputs * sizeof(double));
 
-		if (fgets(line, 2048, ptr) == NULL) {
+		if (fgets(line, 4096, ptr) == NULL) {
 			perror("fgets");
 			exit(1);
 		}
 
-		char *split = strtok(line, " ");
-		for (j = 0; j < 256; ++j) {
+		char *split = strtok(line, token);
+		for (j = 0; j < num_inputs; ++j) {
 			pics[i][j] = atof(split);
-			split = strtok(0, " ");
+			split = strtok(0, token);
 		}
-		for (j = 0; j < 10; j++) {
+		for (j = 0; j < num_outputs; j++) {
 			nums[i][j] = atof(split);
-			split = strtok(0, " ");
+			split = strtok(0, token);
 		}
 	}
-
 
 	// close the dataset file
 	fclose(ptr);
-	
+
 	// initialize the FCNN
-	genann *ann = genann_init(256, 1, 28, 10);
+	genann *ann = genann_init(num_inputs, num_hidden_layers, num_hidden_layers_neurons, num_outputs);
 
 	// train the FCNN with training data
-	int epochs = 100;
-	double learning_rate = 0.05;
 	float train_percent = 0.7;
 	int train_data = train_percent * samples;
-
-	for (i = 0; i < epochs; i++) {
-		for (j = 0; j < train_data; j++) {
-			genann_train(ann, pics[j], nums[j], learning_rate);
-		}
-	}
+	genann_hillclimb(ann, pics, nums, train_data);
 
 	// test the FCNN with test data
 	int corrects = 0;
@@ -109,13 +126,10 @@ int main() {
 	for (i = train_data; i < samples; i++) {
 		const double *guess = genann_run(ann, pics[i]);
 		ind = 0;
-		printf("answer: %d\t %6.2lf", get_num(nums[i]), guess[0]);
-		for (j = 1; j < 10; j++) {
-			printf("%6.2lf", guess[j]);
+		for (j = 1; j < num_outputs; j++) {
 			if (guess[ind] < guess[j]) ind = j;
 		}
 		if (get_num(nums[i]) == ind) corrects++;
-		printf("\tpicked: %d\n", ind);
 	}
 
 	// deallocate the data space

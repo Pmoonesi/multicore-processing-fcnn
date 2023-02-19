@@ -66,6 +66,20 @@ double lookup[LOOKUP_SIZE];
 #pragma warning(disable : 4996) /* For fscanf */
 #endif
 
+int genann_arg_max(double* num, int len) {
+	int i, ind = 0;
+	for (i = 1; i < len; i++) {
+		if (num[i] > num[ind]) ind = i;
+	}
+	return ind;
+}
+
+double genann_difference(double* arr1, double* arr2, int len) {
+	double diff = 0;
+	int i;
+	for (i = 0; i < len; i++) diff += ((arr1[i] - arr2[i]) * (arr1[i] - arr2[i]));
+	return diff;
+}
 
 double genann_act_sigmoid(const genann *ann unused, double a) {
     if (a < -45.0) return 0;
@@ -219,7 +233,7 @@ double const *genann_run(genann const *ann, double const *inputs) {
 
 	cudaFeedForward(ann);
 
-	double const *ret = o + ann->hidden_layers * ann->hidden;
+	double const *ret = ann->output + ann->total_neurons - ann->outputs;
 
     return ret;
 }
@@ -340,6 +354,49 @@ void genann_train(genann const *ann, double const *inputs, double const *desired
 
     }
 
+}
+
+void genann_hillclimb(genann const *ann, double const **inputs, double const **desired_outputs, int size) {
+	printf("size: %d\n", size);
+	int last_err = -1;
+	int threshold = 10000;
+	int count = 0, i;
+	double err;
+	
+	do {
+		++count;
+		if (count % 3000 == 0) {
+			/* We're stuck, start over. */
+			printf("we're stuck, starting from beginning\n");
+			genann_randomize(ann);
+			last_err = size * 10;
+		}
+
+		genann *save = genann_copy(ann);
+
+		cudaRandomWeights(ann, rand());
+
+		/* See how we did. */
+		err = 0;
+		int ind = 0, ans = 0;
+		for (i = 0; i < size; i++) {
+			const double *guess = genann_run(ann, inputs[i]);
+			err += genann_difference(guess, desired_outputs[i], 10);
+		}
+		printf("err: %lf\n", err);
+
+		/* Keep these weights if they're an improvement. */
+		if (last_err == -1 || err < last_err) {
+			genann_free(save);
+			last_err = err;
+			print_arr(ann->weight, 10);
+		}
+		else {
+			genann_free(ann);
+			ann = save;
+		}
+
+	} while (err > threshold && count < 100);
 }
 
 
